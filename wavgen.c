@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
     srand((unsigned)time(NULL));
 
     double phase = 0.0;
-    double two_pi = 2.0 * M_PI;
+    double two_pi = 2.0 * acos(-1.0);  // M_PI unavailable?
 
     for (uint32_t n = 0; n < num_samples; n++) {
         float x = 0.0f;
