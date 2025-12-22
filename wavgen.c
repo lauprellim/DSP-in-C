@@ -33,6 +33,7 @@ Modes:
 // we want to write b[0] = 0x34 and b[1] = 0x12
 // so it is little-endian.
 
+// "le" means "little-endian"...
 static void write_u16_le(FILE *f, uint16_t v) {
   // v is a 16-bit unsigned integer. we want to split
   // it into two 8-bit bytes.
@@ -265,29 +266,53 @@ int main(int argc, char **argv) {
     // instead, and switch inside the loop.
     
     for (uint32_t n = 0; n < num_samples; n++) {
+        // again, "defensive" coding -- assign a value to a variable instead of
+        // float x;
         float x = 0.0f;
 
         if (!strcmp(mode, "sine")) {
-            double inc = two_pi * f1 / (double)sample_rate;
+  	    // force floating point division by casting sample_rate as double.
+	    // inc means phase increment per sample, measured in radians.
+	    // in other words, inc is radians per sample -- how far around the unit circle
+	    // should the oscillator advance for each output sample?
+	    // You could  write sin(two_pi * f1 * n / sample_rate) but this is better because:
+	    //   it avoids repeated multiplications
+	    //   it accumulates phase smoothly
+	    //   generalizes easily (chirps, etc.)
+	    //   it's how real oscillators work
+	    double inc = two_pi * f1 / (double)sample_rate;
+	    // amplitude control
             x = (float)(amp * sin(phase));
+	    // phase accumulation. Advance oscillator by one sample's worth of angular rotation.
             phase += inc;
+	    // in case phase overshot two_pi, subtract two_pi, don't set it back to 0.0!
+	    // more of modulo. Don't let this grow, large floating point numbers loose resolution.
             if (phase >= two_pi) phase -= two_pi;
         } else if (!strcmp(mode, "noise")) {
             /* white noise in [-1,1] */
             float r = 2.0f * frand_uniform() - 1.0f;
             x = (float)(amp * r);
         } else if (!strcmp(mode, "impulse")) {
-            x = (n == 0) ? (float)amp : 0.0f;
+	    // Just the first sample is the user-defined amplitude
+	    // this is followed by samples which are just 0.0 -- till the end of the WAV file.
+	    // if n==0, assign x the user-defined amplitude; else assign x 0.0f...
+	    x = (n == 0) ? (float)amp : 0.0f;
         } else if (!strcmp(mode, "silence")) {
             x = 0.0f;
         } else if (!strcmp(mode, "chirp")) {
             /* linear chirp in frequency over time: f(t) = f1 + (f2-f1)*t/T */
-            double t = (double)n / (double)sample_rate;
-            double T = seconds;
+	    // convert sample index n to time t
+	    double t = (double)n / (double)sample_rate;
+	    // seconds is defined by the user on the command line.
+	    double T = seconds;
+	    // interpolate frequency
             double ft = f1 + (f2 - f1) * (t / T);
+	    // same as above in the sine wave generator...
             double inc = two_pi * ft / (double)sample_rate;
             x = (float)(amp * sin(phase));
+	    // accumlate the phase as before
             phase += inc;
+	    // modulo two_pi
             if (phase >= two_pi) phase -= two_pi;
         } else {
             fprintf(stderr, "Unknown mode: %s\n", mode);
