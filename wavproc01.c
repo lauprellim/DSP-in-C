@@ -1,17 +1,41 @@
+/*
+wavproc01.c
+
+Simple WAV processor: gain and low-pass filter
+PCM 16-bit mono only
+
+usage:
+
+./wavproc01 gain in.wav out.wav 0.5
+./wavproc01 lpf in.wav out.wav 1000
+
+
+*/
+
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
+// centralize fatal error handling
 static void die(const char *msg) {
     fprintf(stderr, "%s\n", msg);
     exit(1);
 }
 
+// write a 16-bit unsigned value
+// we could have done b[0] = (uint8_t)v, but this is less explicit
+// so first mask, then cast! This makes intent very clear.
 static void write_u16_le(FILE *f, uint16_t v) {
+    // allocate a byte buffer
+    // 0xFF means 1111 1111
     uint8_t b[2];
+    // mask everything but the lowest 8 bits
+    // result goes into byte 0 -- the little-endian least-significant byte first!
     b[0] = (uint8_t)(v & 0xFF);
+    // extract the high byte by bitshifting
     b[1] = (uint8_t)((v >> 8) & 0xFF);
     if (fwrite(b, 1, 2, f) != 2) die("write_u16_le: fwrite failed");
 }
@@ -27,7 +51,13 @@ static void write_u32_le(FILE *f, uint32_t v) {
 
 static uint16_t read_u16_le(FILE *f) {
     uint8_t b[2];
+    // be careful, if the number of read-in bytes is not exactly 2, we might have a malformed or truncated WAV file.
     if (fread(b, 1, 2, f) != 2) die("read_u16_le: fread failed");
+    // b[0] is the LEAST significant byte because WAV files are little-endian. b[1] is shifted left to bits 8-15.
+    // bitwise OR will combine something like
+    // high:   1011 0101 0000 0000
+    // low:    0000 0000 1001 1110
+    // result: 1011 0101 1001 1110
     return (uint16_t)(b[0] | ((uint16_t)b[1] << 8));
 }
 
@@ -49,12 +79,17 @@ static float s16_to_float(int16_t s) {
 static int16_t float_to_s16(float x) {
     if (x > 1.0f) x = 1.0f;
     if (x < -1.0f) x = -1.0f;
+    // long round to integer (float version). Rounds a fp number to the nearest int.
+    // returns a long int. Don't truncate, this will introduce distortion!
+    // don't round to int16_t. Go to long int first, then to int16_t.
     long v = lrintf(x * 32767.0f);
     if (v > 32767) v = 32767;
     if (v < -32768) v = -32768;
     return (int16_t)v;
 }
 
+// wrap all the details of the WAV file into one typedef
+// use long because ftell() used long.
 typedef struct {
     uint32_t sample_rate;
     uint16_t channels;
@@ -62,6 +97,9 @@ typedef struct {
     uint32_t data_bytes;
     long     data_offset;
 } wav_info_t;
+
+
+
 
 /* Minimal WAV reader: PCM, 16-bit, mono. */
 static wav_info_t read_wav_header(FILE *f) {
