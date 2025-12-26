@@ -103,10 +103,19 @@ typedef struct {
 
 /* Minimal WAV reader: PCM, 16-bit, mono. */
 static wav_info_t read_wav_header(FILE *f) {
+    // initialize all fields of the struct to 0, overwrite junk 
     wav_info_t info = {0};
 
+    // 4-byte buffer that will store meaningful chunks in RIFF file
+    // RIFF files have no terminator character. This will be exactly
+    // 8 bits per element.
+    // Each read will simply overwrite the previous contents of this.
+    // It is a kind of "label reader". 
     uint8_t id[4];
 
+    // fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
+    // size is in bytes, nmemb = 4 (read 4 of them), return value = number of elements read (not bytes)
+    // use memcmp, not strcmp. This is not a C string, not null-terminated in the file!
     if (fread(id, 1, 4, f) != 4) die("Not a file?");
     if (memcmp(id, "RIFF", 4) != 0) die("Not RIFF");
 
