@@ -108,18 +108,26 @@ static wav_info_t read_wav_header(FILE *f) {
 
     // 4-byte buffer that will store meaningful chunks in RIFF file
     // RIFF files have no terminator character. This will be exactly
-    // 8 bits per element.
+    // 8 bits per element = 1 byte per element.
     // Each read will simply overwrite the previous contents of this.
     // It is a kind of "label reader". 
     uint8_t id[4];
 
+    // syntax of fread() is:
     // fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
     // size is in bytes, nmemb = 4 (read 4 of them), return value = number of elements read (not bytes)
     // use memcmp, not strcmp. This is not a C string, not null-terminated in the file!
+    // this first line ensures that the file is long enough to even contain data
     if (fread(id, 1, 4, f) != 4) die("Not a file?");
     if (memcmp(id, "RIFF", 4) != 0) die("Not RIFF");
 
+    // just cast the next 32 bits as void, we don't need it -- though we do need to
+    // advance the file pointer 4 bytes! This will help the compiler supress warnings.
+    // This value is meaningless, and won't be used later so don't assign it to a variable!
     (void)read_u32_le(f); /* riff_size */
+
+    // check again -- are there 4 more bytes? Is the file intact?
+    // then, is this header declaring the file to be a WAVE file specifically?
     if (fread(id, 1, 4, f) != 4) die("Bad header");
     if (memcmp(id, "WAVE", 4) != 0) die("Not WAVE");
 
@@ -127,7 +135,13 @@ static wav_info_t read_wav_header(FILE *f) {
     int got_data = 0;
 
     while (!got_fmt || !got_data) {
+        // check that there is another chunk of 4 bytes. If there are not four more
+        // bytes, the file is probably corrupt or malformed. This is a kind of "physical"
+        // check -- are there bytes at all?
         if (fread(id, 1, 4, f) != 4) die("Unexpected EOF in chunks");
+
+	// now read in bytes 4-7. This is the chunk size, which is little-endian...
+	// This tells us
         uint32_t chunk_size = read_u32_le(f);
 
         if (memcmp(id, "fmt ", 4) == 0) {
